@@ -1074,11 +1074,28 @@ function publicarReview() {
   const comentario= (document.getElementById('review-comentario').value||'').trim();
   if(!nombre)    { alert('Por favor escribe tu nombre.'); return; }
   if(!comentario){ alert('Por favor escribe tu comentario.'); return; }
-  const nueva = { nombre, comentario, estrellas: estrellaSeleccionada||5,
-    fecha: new Date().toLocaleDateString('es-BO',{day:'2-digit',month:'short',year:'numeric'}) };
+  const estrellas = estrellaSeleccionada||5;
+  const fecha = new Date().toLocaleDateString('es-BO',{day:'2-digit',month:'short',year:'numeric'});
+  // Guardar localmente
+  const nueva = { nombre, comentario, estrellas, fecha };
   const lista = leerReviews(reviewsLugarActual);
   lista.unshift(nueva);
   guardarReviews(reviewsLugarActual, lista);
+  // Enviar a Google Sheets
+  const lugarNombre = reviewsLugarActual.replace('rev_','').replace(/_/g,' ');
+  fetch('https://script.google.com/macros/s/AKfycbxbh2Q9eOrhlIIEcLGnJRhVx1-duipnwzXXF4ROIF2Oc8jtf84hkmOw33puyJnuuQDgKA/exec', {
+    method: 'POST',
+    headers: {'Content-Type':'text/plain'},
+    body: JSON.stringify({
+      tipo:        'comentario',
+      fecha:       fecha,
+      lugar:       lugarNombre,
+      nombre:      nombre,
+      calificacion: estrellas + ' estrella' + (estrellas!==1?'s':''),
+      comentario:  comentario
+    })
+  }).catch(function(){});
+  // Limpiar UI
   document.getElementById('review-nombre').value='';
   document.getElementById('review-comentario').value='';
   setEstrella(0); estrellaSeleccionada=0;
@@ -1103,10 +1120,38 @@ function initReveal(){
   document.querySelectorAll('.reveal').forEach(el=>obs.observe(el));
 }
 
+// ===== CARGAR PRECIOS DESDE GOOGLE SHEETS =====
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxbh2Q9eOrhlIIEcLGnJRhVx1-duipnwzXXF4ROIF2Oc8jtf84hkmOw33puyJnuuQDgKA/exec';
+
+function cargarPreciosDesdeSheets() {
+  fetch(SCRIPT_URL + '?tipo=precios')
+    .then(r => r.json())
+    .then(data => {
+      if(data.result !== 'ok' || !data.precios) return;
+      data.precios.forEach(p => {
+        const nombre = (p.nombre||'').trim().toLowerCase();
+        const cat    = (p.categoria||'').trim().toLowerCase();
+        let arr = [];
+        if(cat === 'turismo')      arr = turismo;
+        else if(cat === 'restaurante') arr = restaurantes;
+        else if(cat === 'hospedaje')   arr = hospedajes;
+        const item = arr.find(x => x.nombre.trim().toLowerCase() === nombre);
+        if(item){
+          if(p.precioLocal)      item.precioLocal  = p.precioLocal;
+          if(p.precioExtranjero) item.precioExt    = p.precioExtranjero;
+        }
+      });
+      // Re-renderizar con precios actualizados
+      renderizarTodo();
+    })
+    .catch(function(){});
+}
+
 // ===== INIT =====
 document.addEventListener('DOMContentLoaded', ()=>{
   renderizarTodo();
   initReveal();
+  cargarPreciosDesdeSheets();
 });
 
 // ===== ENCUESTA / SURVEY =====
@@ -1183,22 +1228,23 @@ document.addEventListener('DOMContentLoaded', ()=>{
     // Guardar todo en localStorage
     localStorage.setItem(SURVEY_KEY, 'true');
     localStorage.setItem('samaipataConectaSurveyData', JSON.stringify(respuestas));
-// Enviar a Google Sheets
-fetch('https://script.google.com/macros/s/AKfycbxbh2Q9eOrhlIIEcLGnJRhVx1-duipnwzXXF4ROIF2Oc8jtf84hkmOw33puyJnuuQDgKA/exec', {
-  method: 'POST',
-  headers: { 'Content-Type': 'text/plain' },
-  body: JSON.stringify({
-    fecha:       respuestas['fecha']          || '',
-    edad:        respuestas['edad']           || '',
-    relacion:    respuestas['sv-relacion']    || '',
-    primera:     respuestas['sv-primera']     || '',
-    info:        respuestas['sv-info']        || '',
-    dificultad:  respuestas['sv-dificultad']  || '',
-    celular:     respuestas['celular']        || '',
-    acepto:      respuestas['acepto'] ? 'Sí' : 'No'
-  })
-}).catch(function(){});
 
+    // Enviar encuesta a Google Sheets
+    fetch('https://script.google.com/macros/s/AKfycbxbh2Q9eOrhlIIEcLGnJRhVx1-duipnwzXXF4ROIF2Oc8jtf84hkmOw33puyJnuuQDgKA/exec', {
+      method: 'POST',
+      headers: {'Content-Type':'text/plain'},
+      body: JSON.stringify({
+        tipo:        'encuesta',
+        fecha:       respuestas['fecha']         || '',
+        edad:        respuestas['edad']          || '',
+        relacion:    respuestas['sv-relacion']   || '',
+        primera:     respuestas['sv-primera']    || '',
+        info:        respuestas['sv-info']       || '',
+        dificultad:  respuestas['sv-dificultad'] || '',
+        celular:     respuestas['celular']       || '',
+        acepto:      respuestas['acepto'] ? 'Sí' : 'No'
+      })
+    }).catch(function(){});
 
     // Mostrar pantalla final
     const card = document.getElementById('sv-card');
@@ -1207,7 +1253,6 @@ fetch('https://script.google.com/macros/s/AKfycbxbh2Q9eOrhlIIEcLGnJRhVx1-duipnwz
       card.classList.remove('leaving');
       document.getElementById('sv-screen-questions').style.display='none';
       document.getElementById('sv-screen-final').style.display='block';
-      // scroll al inicio de la card
       card.scrollIntoView({behavior:'smooth', block:'center'});
     }, 360);
   };
