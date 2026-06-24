@@ -450,7 +450,7 @@
 
 
 <!-- ===== ENCUESTA BIENVENIDA ===== -->
-<div id="survey-overlay">
+<div id="survey-overlay" style="display:none;">
   <div class="sv-bg"></div>
   <div class="sv-bg-over"></div>
   <div class="sv-card" id="sv-card">
@@ -582,7 +582,7 @@
         <div class="sv-final-item"><span>🏨</span>Hospedajes</div>
         <div class="sv-final-item"><span>🌿</span>Descubre Samaipata</div>
       </div>
-      <button class="sv-btn sv-btn-primary" style="width:100%;font-size:1rem;" onclick="svEnterSite()">ENTRAR A SAMAIPATA CONECTA →</button>
+      <button class="sv-btn sv-btn-primary" style="width:100%;font-size:1rem;" onclick="svEnterSite()">← Volver a la página</button>
     </div>
 
   </div><!-- /sv-card -->
@@ -599,6 +599,7 @@
     <a href="#restaurantes" onclick="filterTab('restaurantes')">🍽️ Restaurantes</a>
     <a href="#hospedajes" onclick="filterTab('hospedajes')">🏨 Hospedajes</a>
     <a href="#contacto">📞 Contáctanos</a>
+    <a href="#" onclick="abrirEncuesta();return false;" style="background:var(--dorado);border-color:var(--dorado);color:#fff;">💬 Ayúdanos a mejorar</a>
   </div>
 </nav>
 
@@ -1151,145 +1152,136 @@ document.addEventListener('DOMContentLoaded', ()=>{
 });
 
 // ===== ENCUESTA / SURVEY =====
-(function(){
-  const SURVEY_KEY = 'samaipataConectaSurveyCompleted';
+const TOTAL_STEPS = 6;
+let currentStep = 0;
+const respuestas = {};
 
-  // Si ya completó la encuesta, ocultarla inmediatamente
-  if(localStorage.getItem(SURVEY_KEY)){
-    const ov = document.getElementById('survey-overlay');
-    if(ov) ov.style.display='none';
-    return;
-  }
-
-  // Bloquear scroll mientras está la encuesta
+// Abrir encuesta desde el menú
+window.abrirEncuesta = function(){
+  // Resetear estado
+  respuestas_reset();
+  document.getElementById('sv-screen-welcome').style.display='block';
+  document.getElementById('sv-screen-questions').style.display='none';
+  document.getElementById('sv-screen-final').style.display='none';
+  // Resetear opciones seleccionadas
+  document.querySelectorAll('.sv-option').forEach(o=>o.classList.remove('selected'));
+  document.getElementById('sv-edad').value='';
+  document.getElementById('sv-celular').value='';
+  document.getElementById('sv-acepto').checked=false;
+  svShowStep(1);
+  // Mostrar overlay y bloquear scroll
+  const overlay = document.getElementById('survey-overlay');
+  overlay.style.display='flex';
+  overlay.style.opacity='1';
+  overlay.style.transform='';
   document.body.style.overflow='hidden';
+};
 
-  let currentStep = 0; // 0=bienvenida, 1-6=preguntas
-  const TOTAL_STEPS = 6;
+function respuestas_reset(){
+  Object.keys(respuestas).forEach(k=>delete respuestas[k]);
+}
 
-  // Respuestas acumuladas
-  const respuestas = {};
+window.svStartSurvey = function(){
+  document.getElementById('sv-screen-welcome').style.display='none';
+  document.getElementById('sv-screen-questions').style.display='block';
+  currentStep = 1;
+  svShowStep(1);
+};
 
-  window.svStartSurvey = function(){
-    document.getElementById('sv-screen-welcome').style.display='none';
-    document.getElementById('sv-screen-questions').style.display='block';
-    currentStep = 1;
-    svShowStep(1);
-  };
+window.svSelectOption = function(btn, key){
+  const siblings = btn.parentElement.querySelectorAll('.sv-option');
+  siblings.forEach(s=>s.classList.remove('selected'));
+  btn.classList.add('selected');
+  respuestas[key] = btn.textContent.trim();
+};
 
-  window.svSelectOption = function(btn, key){
-    // Deseleccionar hermanos
-    const siblings = btn.parentElement.querySelectorAll('.sv-option');
-    siblings.forEach(s=>s.classList.remove('selected'));
-    btn.classList.add('selected');
-    // Guardar valor
-    respuestas[key] = btn.textContent.trim();
-  };
-
-  window.svNext = function(step){
-    // Validar
-    if(step===1){
-      const edad = document.getElementById('sv-edad').value.trim();
-      if(!edad || isNaN(edad) || +edad<1 || +edad>120){
-        svShake(); return;
-      }
-      respuestas['edad'] = edad;
-    } else {
-      const keys = {2:'sv-relacion',3:'sv-primera',4:'sv-info',5:'sv-dificultad'};
-      if(keys[step]){
-        const sel = document.querySelector(`#sv-step-${step} .sv-option.selected`);
-        if(!sel){ svShake(); return; }
-      }
+window.svNext = function(step){
+  if(step===1){
+    const edad = document.getElementById('sv-edad').value.trim();
+    if(!edad || isNaN(edad) || +edad<1 || +edad>120){ svShake(); return; }
+    respuestas['edad'] = edad;
+  } else {
+    const keys = {2:'sv-relacion',3:'sv-primera',4:'sv-info',5:'sv-dificultad'};
+    if(keys[step]){
+      const sel = document.querySelector('#sv-step-'+step+' .sv-option.selected');
+      if(!sel){ svShake(); return; }
     }
-    if(step < TOTAL_STEPS){
-      svShowStep(step+1);
-      currentStep = step+1;
-    }
-  };
-
-  window.svBack = function(step){
-    if(step>1){ svShowStep(step-1); currentStep=step-1; }
-    else {
-      document.getElementById('sv-screen-questions').style.display='none';
-      document.getElementById('sv-screen-welcome').style.display='block';
-    }
-  };
-
-  window.svFinish = function(){
-    // Guardar últimos datos
-    respuestas['celular'] = document.getElementById('sv-celular').value.trim();
-    respuestas['acepto']  = document.getElementById('sv-acepto').checked;
-    respuestas['fecha']   = new Date().toLocaleDateString('es-BO',{day:'2-digit',month:'short',year:'numeric'});
-
-    // Guardar todo en localStorage
-    localStorage.setItem(SURVEY_KEY, 'true');
-    localStorage.setItem('samaipataConectaSurveyData', JSON.stringify(respuestas));
-
-    // Enviar encuesta a Google Sheets
-    fetch('https://script.google.com/macros/s/AKfycbxbh2Q9eOrhlIIEcLGnJRhVx1-duipnwzXXF4ROIF2Oc8jtf84hkmOw33puyJnuuQDgKA/exec', {
-      method: 'POST',
-      headers: {'Content-Type':'text/plain'},
-      body: JSON.stringify({
-        tipo:        'encuesta',
-        fecha:       respuestas['fecha']         || '',
-        edad:        respuestas['edad']          || '',
-        relacion:    respuestas['sv-relacion']   || '',
-        primera:     respuestas['sv-primera']    || '',
-        info:        respuestas['sv-info']       || '',
-        dificultad:  respuestas['sv-dificultad'] || '',
-        celular:     respuestas['celular']       || '',
-        acepto:      respuestas['acepto'] ? 'Sí' : 'No'
-      })
-    }).catch(function(){});
-
-    // Mostrar pantalla final
-    const card = document.getElementById('sv-card');
-    card.classList.add('leaving');
-    setTimeout(()=>{
-      card.classList.remove('leaving');
-      document.getElementById('sv-screen-questions').style.display='none';
-      document.getElementById('sv-screen-final').style.display='block';
-      card.scrollIntoView({behavior:'smooth', block:'center'});
-    }, 360);
-  };
-
-  window.svEnterSite = function(){
-    const overlay = document.getElementById('survey-overlay');
-    overlay.style.animation='svFadeOut 0.4s ease forwards';
-    overlay.style.opacity='0';
-    overlay.style.transform='scale(1.02)';
-    overlay.style.transition='opacity 0.4s ease, transform 0.4s ease';
-    document.body.style.overflow='';
-    setTimeout(()=>{ overlay.style.display='none'; }, 420);
-  };
-
-  function svShowStep(n){
-    // Ocultar todos los steps
-    document.querySelectorAll('.sv-step').forEach(s=>s.classList.remove('active'));
-    // Mostrar el actual
-    const el = document.getElementById('sv-step-'+n);
-    if(el) el.classList.add('active');
-    // Actualizar progreso
-    const pct = Math.round(((n-1)/TOTAL_STEPS)*100);
-    document.getElementById('sv-progress-fill').style.width = pct+'%';
-    document.getElementById('sv-step-label').textContent = 'Pregunta '+n+' de '+TOTAL_STEPS;
-    document.getElementById('sv-step-pct').textContent = pct+'%';
   }
+  if(step < TOTAL_STEPS){ svShowStep(step+1); currentStep=step+1; }
+};
 
-  function svShake(){
-    const card = document.getElementById('sv-card');
-    card.style.animation='none';
-    card.style.transform='translateX(0)';
-    // micro shake
-    let t=0;
-    const shakes=[-8,8,-6,6,-4,4,0];
-    const doShake=()=>{
-      if(t<shakes.length){ card.style.transform=`translateX(${shakes[t]}px)`; t++; setTimeout(doShake,50); }
-      else { card.style.transform=''; }
-    };
-    doShake();
+window.svBack = function(step){
+  if(step>1){ svShowStep(step-1); currentStep=step-1; }
+  else {
+    document.getElementById('sv-screen-questions').style.display='none';
+    document.getElementById('sv-screen-welcome').style.display='block';
   }
-})();
+};
+
+window.svFinish = function(){
+  respuestas['celular'] = document.getElementById('sv-celular').value.trim();
+  respuestas['acepto']  = document.getElementById('sv-acepto').checked;
+  respuestas['fecha']   = new Date().toLocaleDateString('es-BO',{day:'2-digit',month:'short',year:'numeric'});
+
+  localStorage.setItem('samaipataConectaSurveyData', JSON.stringify(respuestas));
+
+  // Enviar a Google Sheets
+  fetch('https://script.google.com/macros/s/AKfycbxbh2Q9eOrhlIIEcLGnJRhVx1-duipnwzXXF4ROIF2Oc8jtf84hkmOw33puyJnuuQDgKA/exec', {
+    method: 'POST',
+    headers: {'Content-Type':'text/plain'},
+    body: JSON.stringify({
+      tipo:        'encuesta',
+      fecha:       respuestas['fecha']         || '',
+      edad:        respuestas['edad']          || '',
+      relacion:    respuestas['sv-relacion']   || '',
+      primera:     respuestas['sv-primera']    || '',
+      info:        respuestas['sv-info']       || '',
+      dificultad:  respuestas['sv-dificultad'] || '',
+      celular:     respuestas['celular']       || '',
+      acepto:      respuestas['acepto'] ? 'Sí' : 'No'
+    })
+  }).catch(function(){});
+
+  // Mostrar pantalla final
+  const card = document.getElementById('sv-card');
+  card.classList.add('leaving');
+  setTimeout(()=>{
+    card.classList.remove('leaving');
+    document.getElementById('sv-screen-questions').style.display='none';
+    document.getElementById('sv-screen-final').style.display='block';
+    card.scrollIntoView({behavior:'smooth', block:'center'});
+  }, 360);
+};
+
+window.svEnterSite = function(){
+  const overlay = document.getElementById('survey-overlay');
+  overlay.style.transition='opacity 0.4s ease, transform 0.4s ease';
+  overlay.style.opacity='0';
+  overlay.style.transform='scale(1.02)';
+  document.body.style.overflow='';
+  setTimeout(()=>{ overlay.style.display='none'; }, 420);
+};
+
+function svShowStep(n){
+  document.querySelectorAll('.sv-step').forEach(s=>s.classList.remove('active'));
+  const el = document.getElementById('sv-step-'+n);
+  if(el) el.classList.add('active');
+  const pct = Math.round(((n-1)/TOTAL_STEPS)*100);
+  document.getElementById('sv-progress-fill').style.width = pct+'%';
+  document.getElementById('sv-step-label').textContent = 'Pregunta '+n+' de '+TOTAL_STEPS;
+  document.getElementById('sv-step-pct').textContent = pct+'%';
+}
+
+function svShake(){
+  const card = document.getElementById('sv-card');
+  let t=0;
+  const shakes=[-8,8,-6,6,-4,4,0];
+  const doShake=()=>{
+    if(t<shakes.length){ card.style.transform='translateX('+shakes[t]+'px)'; t++; setTimeout(doShake,50); }
+    else { card.style.transform=''; }
+  };
+  doShake();
+}
 
 </script>
 </body>
